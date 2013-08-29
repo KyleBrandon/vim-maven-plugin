@@ -27,6 +27,10 @@ endif
 if !exists("g:maven_auto_chdir")
 	let g:maven_auto_chdir = 0
 endif
+
+if !exists("g:maven_args")
+    let g:maven_args = ""
+endif
 " }}}
 
 " Maps {{{
@@ -42,9 +46,10 @@ inoremap <silent> <unique> maven#open-test-result <C-O>:call <SID>OpenTestResult
 
 " Autocmds {{{
 augroup MavenAutoDetect
-autocmd MavenAutoDetect BufNewFile,BufReadPost *.* call s:SetupMavenEnv()
-autocmd MavenAutoDetect BufWinEnter *.* call s:AutoChangeCurrentDirOfWindow()
-autocmd MavenAutoDetect QuickFixCmdPost make call s:ProcessQuickFixForMaven()
+    autocmd MavenAutoDetect BufNewFile,BufReadPost *.* call s:SetupMavenEnv()
+    autocmd MavenAutoDetect BufWinEnter *.* call s:AutoChangeCurrentDirOfWindow()
+    autocmd MavenAutoDetect QuickFixCmdPost make call s:ProcessQuickFixForMaven()
+augroup END
 " }}}
 
 " Commands {{{
@@ -123,7 +128,7 @@ function! <SID>SetupMavenEnv()
 	compiler maven
 endfunction
 
-function! <SID>OpenTestResult()
+function! <SID>GetSurefireReportFileName()
 	let triggeredFileName = maven#slashFnamemodify(expand("%"), ":p")
 	let currentBuf = bufnr(triggeredFileName)
 
@@ -162,6 +167,11 @@ function! <SID>OpenTestResult()
 		return
 	endif
 	" //:~)
+
+    return targetFileName
+endfunction
+function! <SID>OpenTestResult()
+    let targetFileName = s:GetSurefireReportFileName()
 
 	if filereadable(targetFileName)
 		if targetFileName =~ '\.java$'
@@ -255,14 +265,22 @@ function! <SID>ConvertToFilePathForTest(sourceClassName, fileDir, fileExtension)
 	let testDir = substitute(a:fileDir, '/src/main/', '/src/test/', '')
 	let listOfCandidates = maven#getCandidateClassNameOfTest(a:sourceClassName)
 
-	for candidate in listOfCandidates
-		let candidatePath = testDir . "/" . candidate . "." . a:fileExtension
-		if filereadable(candidatePath)
-			call add(listOfExistingCandidates, candidatePath)
-		endif
+    let alternateDir = ['', '/test']
 
-		call add(listOfNewCandidates, candidatePath)
-	endfor
+    " TODO: Build a list of candidate paths for alternate test file locations.
+    " Current list works in the simple case of a test file existing in a
+    " different location.
+    for altDir in alternateDir
+        let localDir = testDir.altDir
+        for candidate in listOfCandidates
+            let candidatePath = localDir . "/" . candidate . "." . a:fileExtension
+            if filereadable(candidatePath)
+                call add(listOfExistingCandidates, candidatePath)
+            endif
+
+            call add(listOfNewCandidates, candidatePath)
+        endfor
+    endfor
 	" //:~)
 
 	" Ask the user to choose multiple condidates of existing/new test code
@@ -289,20 +307,32 @@ function! <SID>ConvertToFilePathForTest(sourceClassName, fileDir, fileExtension)
 endfunction
 function! <SID>ConvertToFilePathForSource(testClassName, fileDir, fileExtension)
 	let fileDir = substitute(a:fileDir, '/src/test/', '/src/main/', '')
+    let searchDirs = [fileDir, fnamemodify(fileDir, ':h')]
+    let lastmatch = ''
 
-	" Convert the class name of test code to class name of source code
-	for matchPattern in s:BuildMatchPattersForTestClass()
-		if a:testClassName =~ matchPattern
-			return fileDir . "/" . substitute(a:testClassName, matchPattern, "", "") . "." . a:fileExtension
-		endif
-	endfor
-	" //:~)
+    for dir in searchDirs
+        " Convert the class name of test code to class name of source code
+        for matchPattern in s:BuildMatchPatternsForTestClass()
+            if a:testClassName =~ matchPattern
+                let sourcefile = dir . "/" . substitute(a:testClassName, matchPattern, "", "") . "." . a:fileExtension
+                if filereadable(sourcefile)
+                    return sourcefile
+                endif
 
-	throw "Can't figure out a source for: " . a:testClassName
+                let lastmatch = sourcefile
+            endif
+        endfor
+    endfor
+
+    if empty(lastmatch)
+        throw "Can't figure out a source for: " . a:testClassName
+    endif
+
+    return lastmatch
 endfunction
 
 " Build patters for matching part of class name of testing code
-function! <SID>BuildMatchPattersForTestClass()
+function! <SID>BuildMatchPatternsForTestClass()
 	let matchPatterns = []
 
 	for metaClassName in maven#getCandidateClassNameOfTest("<>")
@@ -552,7 +582,7 @@ function! <SID>RunMavenCommand(args, bang)
 
 	" Execute Maven in console
 	if a:bang == "!"
-		execute "!mvn -f " . pomFile . " " . a:args
+		execute "!mvn -f " . pomFile . " " . a:args . " " . g:maven_args
 
 		if v:shell_error == 0
 			call s:EchoMessage("Execute 'mvn " . a:args .  "' successfully.")
@@ -560,12 +590,14 @@ function! <SID>RunMavenCommand(args, bang)
 			call s:EchoWarning("Executing 'mvn " . a:args .  "' is failed. Exit Code: " . v:shell_error)
 		endif
 
+        redraw!
 		return
 	endif
 	" //:~)
 
 	" Execute Maven by compiler framework in VIM
-	execute "silent make! -f " . pomFile . " " . a:args
+	execute "silent make! -f " . pomFile . " " . a:args . " " . g:maven_args
+    redraw!
 
 	" Open cwindow if the shell has error or the list of quickfix has 'Error' or 'Warning'.
 	" Otherwise, close the quickfix window
@@ -650,10 +682,10 @@ function! <SID>ProcessQuickFixForMaven()
 		" 1. Fix wrong file name in Windows system
 		" 2. Convert class name to file name for unit test
 		" ==================================================
-		if filename =~ '\v^\l+%(\.\l+)*\.\u\k+$' " The file name matches the pattern of full class name of Java
-			call s:AdaptFilenameOfUnitTest(qfentry, filename)
+        if filename =~ '\v^\w+%(\.\w+)*\.\u\k+$' " The file name matches the pattern of full class name of Java
+            call s:AdaptFilenameOfUnitTest(qfentry, filename)
 		elseif qfentry.type =~ '^[EW]$' && filename =~ '\v^\f+$' " The file name matches valid file format under OS
-			call s:AdaptFilenameOfError(qfentry, filename)
+            call s:AdaptFilenameOfError(qfentry, filename)
 		endif
 		" //:~)
 	endfor

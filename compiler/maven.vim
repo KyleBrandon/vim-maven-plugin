@@ -34,7 +34,10 @@ CompilerSet errorformat=
     \[%tRROR]\ %m,
     \[%tARNING]\ %m,
 	\Failed\ tests:%\\s%#%s(%f):\ %m,
-	\%E%>%s(%f)%.%#FAILURE!,
-	\%C%>%.%#java.lang.AssertionError:\ %m,
-	\%-C%>%.%#at\ %.%#Assert%.%#,
-	\%Z%\\s%#at\ %[%^(]%\\+%m
+    \%\\s%#%s(%f):\ %m,
+    \Failed\ tests:%\\s%#%s(%f),
+    \%\\s%#%s(%f),
+	\%E%>%s(%m)%.%#FAILURE!,
+    \%C%>junit.framework.AssertionFailedError,
+    \%-C%>%.%#at\ %.%#junit.framework.Assert%.%#,
+    \%Z%\\s%#at\ %.%#(%f:%l)
