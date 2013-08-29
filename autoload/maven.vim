@@ -8,66 +8,66 @@ let g:autoload_maven = 1
 " Functions for Maven information
 " ==================================================
 function! maven#getMavenProjectRoot(buf)
-	return getbufvar(a:buf, "_mvn_project")
+    return getbufvar(a:buf, "_mvn_project")
 endfunction
 
 function! maven#isBufferUnderMavenProject(buf)
-	call maven#setupMavenProjectInfo(a:buf)
-	return maven#getMavenProjectRoot(a:buf) != ""
+    call maven#setupMavenProjectInfo(a:buf)
+    return maven#getMavenProjectRoot(a:buf) != ""
 endfunction
 
 function! maven#getDependencyClasspath(buf)
-	if !maven#isBufferUnderMavenProject(a:buf)
-		throw "This buffer is not under project of Maven"
-	endif
+    if !maven#isBufferUnderMavenProject(a:buf)
+        throw "This buffer is not under project of Maven"
+    endif
 
-	let cmdForClasspath = "mvn -f " . maven#getMavenProjectRoot(a:buf) . "/pom.xml dependency:build-classpath"
-	let outputOfMaven = split(system(cmdForClasspath), "\n")
+    let cmdForClasspath = "mvn -f " . maven#getMavenProjectRoot(a:buf) . "/pom.xml dependency:build-classpath"
+    let outputOfMaven = split(system(cmdForClasspath), "\n")
 
-	" ==================================================
-	" Look for 'Dependencies classpath' which is used to extract the
-	" classpaths
-	" ==================================================
-	let idxOfClasspath = 0
-	while idxOfClasspath < len(outputOfMaven)
-		if outputOfMaven[idxOfClasspath] =~ "Dependencies classpath"
-			let idxOfClasspath += 1
-			break
-		endif
-		let idxOfClasspath += 1
-	endwhile
-	" //:~)
+    " ==================================================
+    " Look for 'Dependencies classpath' which is used to extract the
+    " classpaths
+    " ==================================================
+    let idxOfClasspath = 0
+    while idxOfClasspath < len(outputOfMaven)
+        if outputOfMaven[idxOfClasspath] =~ "Dependencies classpath"
+            let idxOfClasspath += 1
+            break
+        endif
+        let idxOfClasspath += 1
+    endwhile
+    " //:~)
 
-	if idxOfClasspath >= len(outputOfMaven)
-		throw "Can't extract classpaths. Output: " . join(outputOfMaven, "\n")
-	endif
+    if idxOfClasspath >= len(outputOfMaven)
+        throw "Can't extract classpaths. Output: " . join(outputOfMaven, "\n")
+    endif
 
-	return outputOfMaven[idxOfClasspath]
+    return outputOfMaven[idxOfClasspath]
 endfunction
 
 function! maven#setupMavenProjectInfo(buf)
     " Skip the buffer which is not listed
-	if !buflisted(a:buf)
-		return
-	endif
+    if !buflisted(a:buf)
+        return
+    endif
     " //:~)
 
-	" Check the flag for having been detected
-	if getbufvar(a:buf, "_mvn_detected") != ""
-		return
-	endif
-	call setbufvar(a:buf, "_mvn_detected", 1)
-	" //:~)
+    " Check the flag for having been detected
+    if getbufvar(a:buf, "_mvn_detected") != ""
+        return
+    endif
+    call setbufvar(a:buf, "_mvn_detected", 1)
+    " //:~)
 
-	" Detect the root path of Maven project
-	let belongMavenPath = s:LookForMavenProjectRoot(maven#slashFnamemodify(bufname(a:buf), ":p:h"))
+    " Detect the root path of Maven project
+    let belongMavenPath = s:LookForMavenProjectRoot(maven#slashFnamemodify(bufname(a:buf), ":p:h"))
     if belongMavenPath == ""
         return
     endif
     " //:~)
 
     " Setup the root of buffer
-	call s:SetProjectRootToBuffer(a:buf, belongMavenPath)
+    call s:SetProjectRootToBuffer(a:buf, belongMavenPath)
     " //:~)
 
     call s:SetupOutputFile(a:buf)
@@ -82,53 +82,53 @@ function! maven#getListOfPaths(buf)
 
     let projectRoot = maven#getMavenProjectRoot(a:buf)
 
-	" ==================================================
-	" Setup the subfolder in main/test to improve the speed
-	" of 'path' when scanning
-	" ==================================================
+    " ==================================================
+    " Setup the subfolder in main/test to improve the speed
+    " of 'path' when scanning
+    " ==================================================
 
-	" ==================================================
-	" Puts the <project_root>/src/main/*/ into the path of recursive searching
-	" ==================================================
-	for path in split(globpath(projectRoot . "/src/main/", "*/"))
-		call add(resultPaths, path . "**")
-	endfor
-	" //:~)
+    " ==================================================
+    " Puts the <project_root>/src/main/*/ into the path of recursive searching
+    " ==================================================
+    for path in split(globpath(projectRoot . "/src/main/", "*/"))
+        call add(resultPaths, path . "**")
+    endfor
+    " //:~)
 
-	" ==================================================
-	" Puts the <project_root>/src/main/*/ into the path of recursive searching
-	" ==================================================
-	for path in split(globpath(projectRoot . "/src/test/", "*/"))
-		call add(resultPaths, path . "**")
-	endfor
-	" //:~)
+    " ==================================================
+    " Puts the <project_root>/src/main/*/ into the path of recursive searching
+    " ==================================================
+    for path in split(globpath(projectRoot . "/src/test/", "*/"))
+        call add(resultPaths, path . "**")
+    endfor
+    " //:~)
 
-	" ==================================================
-	" Puts the <project_root>/src/*/ into the path of recursive searching
-	" Excludes the 'main' and 'test' sub-folder
-	" ==================================================
-	for path in split(globpath(projectRoot . "/src/", "*/"))
-		if path !~ '.*/src/main/.*' && path !~ '.*/src/test/.*'
-			call add(resultPaths, path . "**")
-		endif
-	endfor
-	" //:~)
+    " ==================================================
+    " Puts the <project_root>/src/*/ into the path of recursive searching
+    " Excludes the 'main' and 'test' sub-folder
+    " ==================================================
+    for path in split(globpath(projectRoot . "/src/", "*/"))
+        if path !~ '.*/src/main/.*' && path !~ '.*/src/test/.*'
+            call add(resultPaths, path . "**")
+        endif
+    endfor
+    " //:~)
 
-	" ==================================================
-	" Puts the <project_root>/*/ into the path of recursive searching
-	" Excludes the 'src' and 'target' sub-folder
-	" ==================================================
-	for path in split(globpath(projectRoot, '*/'))
-		if path !~ '.*/src/.*' && path !~ '.*/target/.*'
-			call add(resultPaths, path . "**")
-		endif
-	endfor
-	" //:~)
+    " ==================================================
+    " Puts the <project_root>/*/ into the path of recursive searching
+    " Excludes the 'src' and 'target' sub-folder
+    " ==================================================
+    for path in split(globpath(projectRoot, '*/'))
+        if path !~ '.*/src/.*' && path !~ '.*/target/.*'
+            call add(resultPaths, path . "**")
+        endif
+    endfor
+    " //:~)
 
-	" Puts the '/target/**' into searching path
+    " Puts the '/target/**' into searching path
     call add(resultPaths, projectRoot . "/target/**")
 
-	" //:~)
+    " //:~)
     call add(resultPaths, projectRoot)
 
     return resultPaths
@@ -139,20 +139,20 @@ endfunction
 " Functions for Unit Test
 " ==================================================
 function! maven#getCandidateClassNameOfTest(className)
-	if !exists("b:func_maven_unitest_patterns")
-		return maven#getDefaultCandidateClassNameOfTest(a:className)
-	endif
+    if !exists("b:func_maven_unitest_patterns")
+        return maven#getDefaultCandidateClassNameOfTest(a:className)
+    endif
 
-	let FuncGetCandidates = getbufvar("%", "func_maven_unitest_patterns")
-	return FuncGetCandidates(a:className)
+    let FuncGetCandidates = getbufvar("%", "func_maven_unitest_patterns")
+    return FuncGetCandidates(a:className)
 endfunction
 function! maven#getDefaultCandidateClassNameOfTest(className)
-	return [
-		\ a:className . "Test",
-		\ a:className . "TestCase",
-		\ "Test" . a:className,
-		\ a:className . "IT"
-	\ ]
+    return [
+        \ a:className . "Test",
+        \ a:className . "TestCase",
+        \ "Test" . a:className,
+        \ a:className . "IT"
+    \ ]
 endfunction
 " // Functions for Unit Test :~)
 
@@ -183,10 +183,10 @@ function! maven#getJavaClasspathOfBuffer(buf)
         return "<Unknown>"
     endif
 
-	" Remodify the file name in case of different letter case of path
-	let projectRoot = maven#slashFnamemodify(maven#getMavenProjectRoot(a:buf), ":p:h")
-	let dirOfFile = maven#slashFnamemodify(bufname(a:buf), ":p:h")
-	" //:~)
+    " Remodify the file name in case of different letter case of path
+    let projectRoot = maven#slashFnamemodify(maven#getMavenProjectRoot(a:buf), ":p:h")
+    let dirOfFile = maven#slashFnamemodify(bufname(a:buf), ":p:h")
+    " //:~)
 
     let resultClasspath = substitute(dirOfFile, projectRoot, '', '')
     let resultClasspath = matchstr(resultClasspath, '\v(^/\k+/\k+/\k+/)@<=.+') " Remove first three heading paths
@@ -199,13 +199,13 @@ endfunction
 " Miscelllaneous Functions
 " ==================================================
 function! maven#slashFnamemodify(fname, mods)
-	let fnameResult = fnamemodify(a:fname, a:mods)
+    let fnameResult = fnamemodify(a:fname, a:mods)
 
-	if has("win32") && !&shellslash
-		return substitute(fnameResult, '\\\+', '/', 'g')
-	endif
+    if has("win32") && !&shellslash
+        return substitute(fnameResult, '\\\+', '/', 'g')
+    endif
 
-	return fnameResult
+    return fnameResult
 endfunction
 " // Miscelllaneous Functions :~)
 
@@ -219,16 +219,16 @@ function! <SID>LookForMavenProjectRoot(srcPath)
 endfunction
 
 function! <SID>SetProjectRootToBuffer(buf, rootPath)
-	call setbufvar(a:buf, "_mvn_project", a:rootPath)
+    call setbufvar(a:buf, "_mvn_project", a:rootPath)
 endfunction
 
 function! <SID>SetupOutputFile(targetBuf)
-	let currentPath = maven#slashFnamemodify(bufname(a:targetBuf), ":p")
+    let currentPath = maven#slashFnamemodify(bufname(a:targetBuf), ":p")
     if currentPath !~ '/target/'
         return
     endif
 
-	call setbufvar(a:targetBuf, "&buftype", "nowrite")
-	call setbufvar(a:targetBuf, "&modifiable", 0)
+    call setbufvar(a:targetBuf, "&buftype", "nowrite")
+    call setbufvar(a:targetBuf, "&modifiable", 0)
     call setbufvar(a:targetBuf, "&swapfile", 0)
 endfunction
