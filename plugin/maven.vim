@@ -580,14 +580,16 @@ function! <SID>RunMavenCommand(args, bang)
         return
     endif
 
+    let combined_args = " " . a:args . " " . g:maven_args
+
     " Execute Maven in console
     if a:bang == "!"
-        execute "!mvn -f " . pomFile . " " . a:args . " " . g:maven_args
+        execute "!mvn -f " . pomFile . combined_args 
 
         if v:shell_error == 0
-            call s:EchoMessage("Execute 'mvn " . a:args .  "' successfully.")
+            call s:EchoMessage("Execute 'mvn " . combined_args .  "' successfully.")
         else
-            call s:EchoWarning("Executing 'mvn " . a:args .  "' is failed. Exit Code: " . v:shell_error)
+            call s:EchoWarning("Executing 'mvn " . combined_args .  "' is failed. Exit Code: " . v:shell_error)
         endif
 
         redraw!
@@ -596,7 +598,7 @@ function! <SID>RunMavenCommand(args, bang)
     " //:~)
 
     " Execute Maven by compiler framework in VIM
-    execute "silent make! -f " . pomFile . " " . a:args . " " . g:maven_args
+    execute "silent make! -f " . pomFile . combined_args
     redraw!
 
     " Open cwindow if the shell has error or the list of quickfix has 'Error' or 'Warning'.
@@ -612,7 +614,7 @@ function! <SID>RunMavenCommand(args, bang)
             return
         endif
     endfor
-    call s:EchoMessage("Execute 'mvn " . a:args .  "' successfully.")
+    call s:EchoMessage("Execute 'mvn " . combined_args .  "' successfully.")
     " //:~)
 endfunction
 function! <SID>OpenQuickfixWindowAndJump()
