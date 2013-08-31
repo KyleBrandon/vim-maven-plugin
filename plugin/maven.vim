@@ -124,8 +124,6 @@ function! <SID>SetupMavenEnv()
         endif
     endif
     " //:~)
-
-    compiler maven
 endfunction
 
 function! <SID>GetSurefireReportFileName()
@@ -584,12 +582,12 @@ function! <SID>RunMavenCommand(args, bang)
 
     " Execute Maven in console
     if a:bang == "!"
-        execute "!mvn -f " . pomFile . combined_args 
+        execute "silent !mvn -f " . pomFile . combined_args
 
         if v:shell_error == 0
-            call s:EchoMessage("Execute 'mvn " . combined_args .  "' successfully.")
+            call s:EchoMessage("Execute '!mvn " . combined_args .  "' successfully.")
         else
-            call s:EchoWarning("Executing 'mvn " . combined_args .  "' is failed. Exit Code: " . v:shell_error)
+            call s:EchoWarning("Executing '!mvn " . combined_args .  "' is failed. Exit Code: " . v:shell_error)
         endif
 
         redraw!
@@ -597,9 +595,20 @@ function! <SID>RunMavenCommand(args, bang)
     endif
     " //:~)
 
+    let old_makeprg = &l:makeprg
+    let old_errorformat = &l:errorformat
+    let old_shellpipe = &shellpipe
+    let old_shell = &shell
+    compiler maven
+
     " Execute Maven by compiler framework in VIM
     execute "silent make! -f " . pomFile . combined_args
     redraw!
+
+    let &l:makeprg = old_makeprg
+    let &l:errorformat = old_errorformat
+    let &shellpipe=old_shellpipe
+    let &shell=old_shell
 
     " Open cwindow if the shell has error or the list of quickfix has 'Error' or 'Warning'.
     " Otherwise, close the quickfix window
