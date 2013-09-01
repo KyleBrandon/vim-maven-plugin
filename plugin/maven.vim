@@ -2,6 +2,7 @@ if exists('g:loaded_maven') && !exists('g:reload_maven')
     finish
 endif
 
+" Check for Reload {{{1
 if exists('g:reload_maven')
     autocmd! MavenAutoDetect
     augroup! MavenAutoDetect
@@ -17,7 +18,8 @@ if exists('g:reload_maven')
     iunmap maven#open-test-result
     nunmap maven#open-test-result
 endif
-
+"}}}
+"
 let g:loaded_maven = 1
 
 " Global settings {{{
@@ -104,7 +106,7 @@ command! -nargs=+ -complete=custom,s:CmdCompleteListPackage MvnNewTestFile call 
 210menu <silent> Maven.Phrase.Site.site-deploy :Mvn site-deploy<CR>
 " }}}
 
-" Setup the maven environment for current buffer
+" Setup the maven environment for current buffer {{{1
 function! <SID>SetupMavenEnv()
     let currentBuffer = bufnr("%")
 
@@ -125,7 +127,23 @@ function! <SID>SetupMavenEnv()
     endif
     " //:~)
 endfunction
+"}}}
 
+" Open Surefire test result for the current buffer {{{1
+function! <SID>OpenTestResult()
+    let targetFileName = s:GetSurefireReportFileName()
+
+    if filereadable(targetFileName)
+        if targetFileName =~ '\.java$'
+            execute "edit " . targetFileName
+        else
+            execute "view " . targetFileName
+        endif
+        return
+    endif
+
+    call s:EchoWarning("File not exists:" . targetFileName)
+endfunction
 function! <SID>GetSurefireReportFileName()
     let triggeredFileName = maven#slashFnamemodify(expand("%"), ":p")
     let currentBuf = bufnr(triggeredFileName)
@@ -168,20 +186,9 @@ function! <SID>GetSurefireReportFileName()
 
     return targetFileName
 endfunction
-function! <SID>OpenTestResult()
-    let targetFileName = s:GetSurefireReportFileName()
+"}}}
 
-    if filereadable(targetFileName)
-        if targetFileName =~ '\.java$'
-            execute "edit " . targetFileName
-        else
-            execute "view " . targetFileName
-        endif
-        return
-    endif
-
-    call s:EchoWarning("File not exists:" . targetFileName)
-endfunction
+" Switch between source and test file {{{!
 function! <SID>SwitchUnitTest()
     " ==================================================
     " Jump back to the file of test code from the result file of test
@@ -352,28 +359,81 @@ function! <SID>BuildMatchPatternsForTestClass()
     return matchPatterns
 endfunction
 
-" List the candidates of file name for testing.
-" This function is used to generate command completion in VIM.
+function! <SID>BuildSelectionOfClassName(listOfPath)
+    let listOfSelection = []
+
+    for path in a:listOfPath
+        call add(listOfSelection, fnamemodify(path, ":t:r"))
+    endfor
+    call add(listOfSelection, "*Cancel*") " Add 'Cancel' option
+
+    return join(listOfSelection, "\n")
+endfunction
+"}}}
+
+" Open a new file given a category, package and file name {{{1
+"   EditNewFile("com.company.model User.java", "main")
+"       Creates a file in /src/main/java/com/company/model/User.java
 "
-" This result of this function is the file name of candidate.
-" For example:
-" [
-"   "ControllerTest.java",
-"   "ControllerTestIT.java",
-"   "ControllerTestCase.java",
-"   "TestController.java"
-" ]
-function! <SID>ListCandidatesOfTest(argLead, cmdLine, cursorPos)
-    let candidatesOfFileNames = maven#getCandidateClassNameOfTest(maven#slashFnamemodify(bufname("%"), ":t:r"))
-    let fileExtension = maven#slashFnamemodify(bufname("%"), ":e")
+"   EditNewFile("com.company.model UserTest.java", "test")
+"       Creates a file in /src/test/java/com/company/model/UserTest.java
+"
+function! <SID>EditNewFile(args, sourceCategory)
+    if !maven#isBufferUnderMavenProject(bufnr("%"))
+        throw "Current buffer is not under Maven project"
+    endif
 
-    let i = 0
-    while i < len(candidatesOfFileNames)
-        let candidatesOfFileNames[i] = candidatesOfFileNames[i] . "." . fileExtension
-        let i += 1
-    endwhile
+    let cmdOptions = split(a:args, '\s\+')
+    if len(cmdOptions) < 2
+        throw "Needs [-prefix={prefix}] <package> <filename>"
+    endif
 
-    return candidatesOfFileNames
+    " ==================================================
+    " Prepare prefix directory
+    " ==================================================
+    let prefixOption = s:ProcessOptionsForEditNewFile(cmdOptions)
+    if prefixOption["prefixDef"] == ""
+        let prefix = fnamemodify(cmdOptions[1], ":e")
+        let targetPackage = cmdOptions[0]
+        let targetFileName = cmdOptions[1]
+    else
+        let prefix = prefixOption["prefixValue"]
+        let targetPackage = cmdOptions[1]
+        let targetFileName = cmdOptions[2]
+    endif
+    " //:~)
+
+    " Prepare the full path name of new file
+    let fileFullPath = maven#getMavenProjectRoot(bufnr("%")) . '/src/' . a:sourceCategory . '/'
+        \ . prefix . "/"
+        \ . substitute(targetPackage, '\.', '/', 'g') . '/'
+        \ . targetFileName
+    " //:~)
+
+    " Build the tree of directory of new file
+    let fileDir = fnamemodify(fileFullPath, ":p:h")
+    if !isdirectory(fileDir)
+        call mkdir(fileDir, "p")
+    endif
+    " //:~)
+
+    execute "edit " . fileFullPath
+endfunction
+
+function! <SID>ProcessOptionsForEditNewFile(args)
+    let prefixDef = ""
+    let prefixValue = ""
+
+    if len(a:args) >=1 && a:args[0] =~ '\v^-p%(refix)?\=.*$'
+        let prefixContent = matchlist(a:args[0], '\v^(-p%(refix)?\=)(.*)$')
+        let prefixDef = prefixContent[1]
+        let prefixValue = prefixContent[2]
+    endif
+
+    return {
+        \ "prefixDef" : prefixDef,
+        \ "prefixValue" : prefixValue
+        \ }
 endfunction
 
 " Generate list of package sorted by
@@ -446,6 +506,7 @@ function! <SID>CmdCompleteListPackage(argLead, cmdLine, cursorPos)
 
     return join(packages, "\n")
 endfunction
+
 function! <SID>GetAutoCompleteOfPrefix(rootDir, prefixOption)
     let prefixGlob = a:prefixOption["prefixValue"] == "" ? "*/" : a:prefixOption["prefixValue"] . "*/"
     let prefixDirectories = split(glob(a:rootDir . prefixGlob), "\n")
@@ -463,6 +524,7 @@ function! <SID>GetAutoCompleteOfPrefix(rootDir, prefixOption)
 
     return join(prefixDirectories, "\n")
 endfunction
+
 " Sort name of packages by height of hierarachy and literal name
 function! <SID>SortPackageName(leftPackage, rightPackage)
     let heightOfLeftPackage = strlen(substitute(a:leftPackage, '[^.]', '', 'g'))
@@ -486,64 +548,9 @@ function! <SID>SortPackageName(leftPackage, rightPackage)
 
     return 0
 endfunction
-
-function! <SID>EditNewFile(args, sourceCategory)
-    if !maven#isBufferUnderMavenProject(bufnr("%"))
-        throw "Current buffer is not under Maven project"
-    endif
-
-    let cmdOptions = split(a:args, '\s\+')
-    if len(cmdOptions) < 2
-        throw "Needs [-prefix={prefix}] <package> <filename>"
-    endif
-
-    " ==================================================
-    " Prepare prefix directory
-    " ==================================================
-    let prefixOption = s:ProcessOptionsForEditNewFile(cmdOptions)
-    if prefixOption["prefixDef"] == ""
-        let prefix = fnamemodify(cmdOptions[1], ":e")
-        let targetPackage = cmdOptions[0]
-        let targetFileName = cmdOptions[1]
-    else
-        let prefix = prefixOption["prefixValue"]
-        let targetPackage = cmdOptions[1]
-        let targetFileName = cmdOptions[2]
-    endif
-    " //:~)
-
-    " Prepare the full path name of new file
-    let fileFullPath = maven#getMavenProjectRoot(bufnr("%")) . '/src/' . a:sourceCategory . '/'
-        \ . prefix . "/"
-        \ . substitute(targetPackage, '\.', '/', 'g') . '/'
-        \ . targetFileName
-    " //:~)
-
-    " Build the tree of directory of new file
-    let fileDir = fnamemodify(fileFullPath, ":p:h")
-    if !isdirectory(fileDir)
-        call mkdir(fileDir, "p")
-    endif
-    " //:~)
-
-    execute "edit " . fileFullPath
-endfunction
-function! <SID>ProcessOptionsForEditNewFile(args)
-    let prefixDef = ""
-    let prefixValue = ""
-
-    if len(a:args) >=1 && a:args[0] =~ '\v^-p%(refix)?\=.*$'
-        let prefixContent = matchlist(a:args[0], '\v^(-p%(refix)?\=)(.*)$')
-        let prefixDef = prefixContent[1]
-        let prefixValue = prefixContent[2]
-    endif
-
-    return {
-        \ "prefixDef" : prefixDef,
-        \ "prefixValue" : prefixValue
-        \ }
-endfunction
-
+"}}}
+"
+" Open test file that is under /src/test from the current buffer {{{1
 function! <SID>EditTestCode(testFileName)
     let pathOfCurrentBuffer = maven#slashFnamemodify(bufname("%"), ":p:h")
     if pathOfCurrentBuffer !~ '/src/main/'
@@ -559,17 +566,33 @@ function! <SID>EditTestCode(testFileName)
     execute "edit " . pathOfTestFile . "/" . a:testFileName
 endfunction
 
-function! <SID>BuildSelectionOfClassName(listOfPath)
-    let listOfSelection = []
 
-    for path in a:listOfPath
-        call add(listOfSelection, fnamemodify(path, ":t:r"))
-    endfor
-    call add(listOfSelection, "*Cancel*") " Add 'Cancel' option
+" List the candidates of file name for testing.
+" This function is used to generate command completion in VIM.
+"
+" This result of this function is the file name of candidate.
+" For example:
+" [
+"   "ControllerTest.java",
+"   "ControllerTestIT.java",
+"   "ControllerTestCase.java",
+"   "TestController.java"
+" ]
+function! <SID>ListCandidatesOfTest(argLead, cmdLine, cursorPos)
+    let candidatesOfFileNames = maven#getCandidateClassNameOfTest(maven#slashFnamemodify(bufname("%"), ":t:r"))
+    let fileExtension = maven#slashFnamemodify(bufname("%"), ":e")
 
-    return join(listOfSelection, "\n")
+    let i = 0
+    while i < len(candidatesOfFileNames)
+        let candidatesOfFileNames[i] = candidatesOfFileNames[i] . "." . fileExtension
+        let i += 1
+    endwhile
+
+    return candidatesOfFileNames
 endfunction
+"}}}
 
+" Run a Maven command "{{{1
 function! <SID>RunMavenCommand(args, bang)
     update
 
@@ -629,46 +652,12 @@ endfunction
 function! <SID>OpenQuickfixWindowAndJump()
     copen
 endfunction
-function! <SID>CompleteMavenLifecycle(argLead, cmdLine, cursorPos)
-    return join(['preclean', 'clean', 'postclean',
-        \ 'validate', 'initialize',
-        \ 'generate-sources', 'process-sources', 'generate-resources', 'process-resources', 'compile', 'process-classes',
-        \ 'generate-test-sources', 'process-test-sources', 'generate-test-resources', 'process-test-resources',
-        \ 'test-compile', 'process-test-classes', 'post-process', 'test',
-        \ 'prepare-package', 'package',
-        \ 'pre-integration-test', 'integration-test', 'post-integration-test',
-        \ 'verify', 'install', 'deploy',
-        \ 'pre-site', 'site', 'post-site', 'site-deploy'
-    \ ], "\n")
-endfunction
-
-function! <SID>AutoChangeCurrentDirOfWindow()
-    if g:maven_auto_chdir == 0
-        return
-    endif
-
-    let currentBuffer = bufnr("%")
-
-    if !maven#isBufferUnderMavenProject(currentBuffer)
-        return
-    endif
-
-    execute "lcd " . maven#getMavenProjectRoot(currentBuffer)
-endfunction
 function! <SID>GetPOMXMLFile(buf)
     if !s:CheckFileInMavenProject(a:buf)
         return
     endif
 
     return maven#getMavenProjectRoot(a:buf) . "/pom.xml"
-endfunction
-function! <SID>CheckFileInMavenProject(buf)
-    if !maven#isBufferUnderMavenProject(a:buf)
-        call s:EchoWarning("File doesn't exist in Maven project")
-        return 0
-    endif
-
-    return 1
 endfunction
 
 " Because the path in message output by Maven has '/<fullpath>' in windows
@@ -716,6 +705,7 @@ function! <SID>AdaptFilenameOfError(qfentry, rawFileName)
     endif
     " //:~)
 endfunction
+
 function! <SID>AdaptFilenameOfUnitTest(qfentry, fullClassName)
     " Convert the full name of class to full path of file
     let filename = substitute(a:fullClassName, '\.', '/', 'g')
@@ -738,7 +728,45 @@ function! <SID>AdaptFilenameOfUnitTest(qfentry, fullClassName)
     let a:qfentry.type = "E"
 endfunction
 
-" Functions for echoing messages {{{
+function! <SID>CompleteMavenLifecycle(argLead, cmdLine, cursorPos)
+    return join(['preclean', 'clean', 'postclean',
+        \ 'validate', 'initialize',
+        \ 'generate-sources', 'process-sources', 'generate-resources', 'process-resources', 'compile', 'process-classes',
+        \ 'generate-test-sources', 'process-test-sources', 'generate-test-resources', 'process-test-resources',
+        \ 'test-compile', 'process-test-classes', 'post-process', 'test',
+        \ 'prepare-package', 'package',
+        \ 'pre-integration-test', 'integration-test', 'post-integration-test',
+        \ 'verify', 'install', 'deploy',
+        \ 'pre-site', 'site', 'post-site', 'site-deploy'
+    \ ], "\n")
+endfunction
+"}}}
+
+" Auto change the buffer's directory to POM location{{{1
+function! <SID>AutoChangeCurrentDirOfWindow()
+    if g:maven_auto_chdir == 0
+        return
+    endif
+
+    let currentBuffer = bufnr("%")
+
+    if !maven#isBufferUnderMavenProject(currentBuffer)
+        return
+    endif
+
+    execute "lcd " . maven#getMavenProjectRoot(currentBuffer)
+endfunction
+"}}}
+
+" Utility {{{1
+function! <SID>CheckFileInMavenProject(buf)
+    if !maven#isBufferUnderMavenProject(a:buf)
+        call s:EchoWarning("File doesn't exist in Maven project")
+        return 0
+    endif
+
+    return 1
+endfunction
 
 function! <SID>EchoMessage(msg)
     echohl MoreMsg
