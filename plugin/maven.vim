@@ -188,7 +188,7 @@ function! <SID>GetSurefireReportFileName()
 endfunction
 "}}}
 
-" Switch between source and test file {{{!
+" Switch between source and test file {{{1
 function! <SID>SwitchUnitTest()
     " ==================================================
     " Jump back to the file of test code from the result file of test
@@ -383,31 +383,14 @@ function! <SID>EditNewFile(args, sourceCategory)
         throw "Current buffer is not under Maven project"
     endif
 
-    let cmdOptions = split(a:args, '\s\+')
-    if len(cmdOptions) < 2
-        throw "Needs [-prefix={prefix}] <package> <filename>"
-    endif
-
-    " ==================================================
-    " Prepare prefix directory
-    " ==================================================
-    let prefixOption = s:ProcessOptionsForEditNewFile(cmdOptions)
-    if prefixOption["prefixDef"] == ""
-        let prefix = fnamemodify(cmdOptions[1], ":e")
-        let targetPackage = cmdOptions[0]
-        let targetFileName = cmdOptions[1]
-    else
-        let prefix = prefixOption["prefixValue"]
-        let targetPackage = cmdOptions[1]
-        let targetFileName = cmdOptions[2]
-    endif
-    " //:~)
+    let options = s:ParseArgumentsForMvnEdit(a:args)
 
     " Prepare the full path name of new file
-    let fileFullPath = maven#getMavenProjectRoot(bufnr("%")) . '/src/' . a:sourceCategory . '/'
-        \ . prefix . "/"
-        \ . substitute(targetPackage, '\.', '/', 'g') . '/'
-        \ . targetFileName
+    let fileFullPath = maven#getMavenProjectRoot(bufnr("%"))
+    let fileFullPath .= '/src/' . a:sourceCategory . '/'
+    let fileFullPath .=  options.sources .'/'
+    let fileFullPath .= substitute(options.package, '\.', '/', 'g') . '/'
+    let fileFullPath .= options.filename
     " //:~)
 
     " Build the tree of directory of new file
@@ -420,20 +403,67 @@ function! <SID>EditNewFile(args, sourceCategory)
     execute "edit " . fileFullPath
 endfunction
 
-function! <SID>ProcessOptionsForEditNewFile(args)
-    let prefixDef = ""
-    let prefixValue = ""
+" Parse the arguments for MvnEdit
+"
+"   MvnEdit <project> <type> <package> <filename>
+"       -project - is useful when your vim session's working directory is in the parent folder of the top pom.
+"                   This allows you to have cross pom commands.
+"       -sources - is the type of source files you're creating; java, js, resources, etc...
+"       package  - is the full package name e.g. com.my_company.my_app.my_componenent.
+"       filename - name of the file you wish to edit.  If it doesn't exist it will be created in the correct folder.
+"
+function! <SID>ParseArgumentsForMvnEdit(args)
 
-    if len(a:args) >=1 && a:args[0] =~ '\v^-p%(refix)?\=.*$'
-        let prefixContent = matchlist(a:args[0], '\v^(-p%(refix)?\=)(.*)$')
-        let prefixDef = prefixContent[1]
-        let prefixValue = prefixContent[2]
+    let arguments = split(a:args, '\s\+')
+    if len(arguments) < 2
+        throw "Needs [project] [sources] <package> <filename>"
     endif
 
-    return {
-        \ "prefixDef" : prefixDef,
-        \ "prefixValue" : prefixValue
-        \ }
+    let options = {"project": "", "sources": "", "package": "", "filename": ""}
+
+    let other = []
+
+    for item in arguments
+        " check for an argument starting with '-'
+        if item =~ '\v^-(.)%(.*)?\=.*$'
+
+            let argMatch = matchlist(item, '\v^-(.)%(.*)?\=(.*)$')
+            if (argMatch[1] == 'p')
+                let options.project = argMatch[2]
+            elseif (argMatch[1] == 's')
+                let options.sources = argMatch[2]
+            else
+                echom "Ignoring unknown argument (".argMatch[0].")."
+            endif
+        else
+            " either package or filename
+            call add(other, item)
+        endif
+    endfor
+
+    if len(other) > 2
+        echom "Too many arguments specified: ".string(other)
+        return
+    endif
+
+    if len(other) < 1
+        echom "Must have at least a filename specified."
+        return
+    endif
+
+    if len(other) == 2
+        let options.package = other[0]
+    endif
+
+    if len(other) >= 1
+        let options.filename = other[len(other) - 1]
+
+        if (options.sources == "")
+            let options.sources = fnamemodify(arguments[1], ":e")
+        endif
+    endif
+
+    return options
 endfunction
 
 " Generate list of package sorted by
