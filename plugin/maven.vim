@@ -57,8 +57,9 @@ augroup END
 " Commands {{{
 command! -bang -nargs=+ -complete=custom,s:CompleteMavenLifecycle Mvn call s:RunMavenCommand(<q-args>, expand("<bang>"))
 command! -nargs=1 -complete=customlist,s:ListCandidatesOfTest MvnEditTestCode call s:EditTestCode(<q-args>)
-command! -nargs=+ -complete=custom,s:CmdCompleteListPackage MvnNewMainFile call s:EditNewFile(<q-args>, "main")
-command! -nargs=+ -complete=custom,s:CmdCompleteListPackage MvnNewTestFile call s:EditNewFile(<q-args>, "test")
+command! -nargs=+ -complete=custom,s:CmdCompleteListPackage MvnEditFile call s:EditFile(<q-args>)
+command! -nargs=+ -complete=custom,s:CmdCompleteListPackage MvnNewMainFile call s:EditFile("-t=main ".<q-args>)
+command! -nargs=+ -complete=custom,s:CmdCompleteListPackage MvnNewTestFile call s:EditFile("-t=test ".<q-args>)
 " }}}
 
 " Menu {{{
@@ -372,13 +373,15 @@ endfunction
 "}}}
 
 " Open a new file given a category, package and file name {{{1
-"   EditNewFile("com.company.model User.java", "main")
-"       Creates a file in /src/main/java/com/company/model/User.java
+"   MvnEdit <project> <type> <package> <filename>
+"       -project - is useful when your vim session's working directory is in the parent folder of the top pom.
+"                   This allows you to have cross pom commands.
+"       -type    - main or test
+"       -sources - is the type of source files you're creating; java, js, resources, etc...
+"       package  - is the full package name e.g. com.my_company.my_app.my_componenent.
+"       filename - name of the file you wish to edit.  If it doesn't exist it will be created in the correct folder.
 "
-"   EditNewFile("com.company.model UserTest.java", "test")
-"       Creates a file in /src/test/java/com/company/model/UserTest.java
-"
-function! <SID>EditNewFile(args, sourceCategory)
+function! <SID>EditFile(args)
     if !maven#isBufferUnderMavenProject(bufnr("%"))
         throw "Current buffer is not under Maven project"
     endif
@@ -388,11 +391,17 @@ function! <SID>EditNewFile(args, sourceCategory)
         return
     endif
 
+    echom string(options)
+
     " Prepare the full path name of new file
     let fileFullPath = maven#getMavenProjectRoot(bufnr("%"))
-    let fileFullPath .= '/src/' . a:sourceCategory . '/'
+    let fileFullPath .= '/src/' . options.type . '/'
     let fileFullPath .= options.sources .'/'
-    let fileFullPath .= substitute(options.package, '\.', '/', 'g') . '/'
+
+    if has_key(options, "package")
+        let fileFullPath .= substitute(options.package, '\.', '/', 'g') . '/'
+    endif
+
     let fileFullPath .= options.filename
     " //:~)
 
@@ -408,73 +417,60 @@ endfunction
 
 " Parse the arguments for MvnEdit
 "
-"   MvnEdit <project> <type> <package> <filename>
-"       -project - is useful when your vim session's working directory is in the parent folder of the top pom.
-"                   This allows you to have cross pom commands.
-"       -sources - is the type of source files you're creating; java, js, resources, etc...
-"       package  - is the full package name e.g. com.my_company.my_app.my_componenent.
-"       filename - name of the file you wish to edit.  If it doesn't exist it will be created in the correct folder.
 "
 let s:maven_argument_map = {
-            \"p": "project",
-            \"s": "sources"
+            \"p": { "name": "project", "default": "" },
+            \"t": { "name": "type", "default": "main" },
+            \"s": { "name": "sources", "default": "" }
             \}
+let s:maven_position_map = ["filename", "package"]
 
 function! <SID>ParseArgumentsForMvnEdit(args)
-
     let arguments = split(a:args, '\s\+')
-    if len(arguments) < 2
-        throw "Needs [project] [sources] <package> <filename>"
-    endif
 
-    let options = {"project": "", "sources": "", "package": "", "filename": ""}
+    let options = {}
+    for argToken in keys(s:maven_argument_map)
+        let mapEntry = s:maven_argument_map[argToken]
 
-    let other = []
-
-    for item in arguments
-
-        let matched = 0
-        for argToken in keys(s:maven_argument_map)
-            let matchPattern = '\v^-('.argToken.')%(.*)?\=(.*)$'
-            if item =~ matchPattern
-                let argMatch = matchlist(item, matchPattern)
-                if argMatch[1] == argToken
-                    let options[s:maven_argument_map[argToken]] = argMatch[2]
-                    let matched = 1
-                else
-                    echom "Ignoring unknown argument (".argMatch[0].")."
-                endif
-            endif
-        endfor
-
-        if !matched
-            call add(other, item)
+        let argMatch = s:matchArgumentList(argToken, arguments)
+        if empty(argMatch)
+            let options[mapEntry.name] = mapEntry.default
+        else
+            let options[mapEntry.name] = argMatch
         endif
     endfor
 
-    if len(other) > 2
-        echoerr "Too many arguments specified: ".string(other)
-        return {}
-    endif
-
-    if len(other) < 1
-        echoerr "Must have at least a filename specified."
-        return {}
-    endif
-
-    if len(other) == 2
-        let options.package = other[0]
-    endif
-
-    if len(other) >= 1
-        let options.filename = other[len(other) - 1]
-
-        if (options.sources == "")
-            let options.sources = fnamemodify(arguments[1], ":e")
+    let index = 0
+    for item in reverse(arguments)
+        if item =~ '\v^[^-].*$' && index < len(s:maven_position_map)
+            let options[s:maven_position_map[index]] = item
+            let index = index + 1
         endif
+    endfor
+
+    if empty(options.sources)
+        let options.sources = fnamemodify(options.filename, ":e")
+    endif
+
+    if empty(options)
+        throw "EditFile -p(roject)=<project> -t(type)=[main|test] -s(sources)=[java|js|resources] package filename"
     endif
 
     return options
+endfunction
+
+function! <SID>matchArgumentList(argToken, arguments)
+    for arg in a:arguments
+        let matchPattern = '\v^-('.a:argToken.')%(.*)?\=(.*)$'
+        if arg =~ matchPattern
+            let argMatch = matchlist(arg, matchPattern)
+            if argMatch[1] == a:argToken
+                return argMatch[2]
+            endif
+        endif
+    endfor
+
+    return ""
 endfunction
 
 " Generate list of package sorted by
