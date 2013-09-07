@@ -384,11 +384,14 @@ function! <SID>EditNewFile(args, sourceCategory)
     endif
 
     let options = s:ParseArgumentsForMvnEdit(a:args)
+    if empty(options)
+        return
+    endif
 
     " Prepare the full path name of new file
     let fileFullPath = maven#getMavenProjectRoot(bufnr("%"))
     let fileFullPath .= '/src/' . a:sourceCategory . '/'
-    let fileFullPath .=  options.sources .'/'
+    let fileFullPath .= options.sources .'/'
     let fileFullPath .= substitute(options.package, '\.', '/', 'g') . '/'
     let fileFullPath .= options.filename
     " //:~)
@@ -412,6 +415,11 @@ endfunction
 "       package  - is the full package name e.g. com.my_company.my_app.my_componenent.
 "       filename - name of the file you wish to edit.  If it doesn't exist it will be created in the correct folder.
 "
+let s:maven_argument_map = {
+            \"p": "project",
+            \"s": "sources"
+            \}
+
 function! <SID>ParseArgumentsForMvnEdit(args)
 
     let arguments = split(a:args, '\s\+')
@@ -424,31 +432,34 @@ function! <SID>ParseArgumentsForMvnEdit(args)
     let other = []
 
     for item in arguments
-        " check for an argument starting with '-'
-        if item =~ '\v^-(.)%(.*)?\=.*$'
 
-            let argMatch = matchlist(item, '\v^-(.)%(.*)?\=(.*)$')
-            if (argMatch[1] == 'p')
-                let options.project = argMatch[2]
-            elseif (argMatch[1] == 's')
-                let options.sources = argMatch[2]
-            else
-                echom "Ignoring unknown argument (".argMatch[0].")."
+        let matched = 0
+        for argToken in keys(s:maven_argument_map)
+            let matchPattern = '\v^-('.argToken.')%(.*)?\=(.*)$'
+            if item =~ matchPattern
+                let argMatch = matchlist(item, matchPattern)
+                if argMatch[1] == argToken
+                    let options[s:maven_argument_map[argToken]] = argMatch[2]
+                    let matched = 1
+                else
+                    echom "Ignoring unknown argument (".argMatch[0].")."
+                endif
             endif
-        else
-            " either package or filename
+        endfor
+
+        if !matched
             call add(other, item)
         endif
     endfor
 
     if len(other) > 2
-        echom "Too many arguments specified: ".string(other)
-        return
+        echoerr "Too many arguments specified: ".string(other)
+        return {}
     endif
 
     if len(other) < 1
-        echom "Must have at least a filename specified."
-        return
+        echoerr "Must have at least a filename specified."
+        return {}
     endif
 
     if len(other) == 2
@@ -579,7 +590,7 @@ function! <SID>SortPackageName(leftPackage, rightPackage)
     return 0
 endfunction
 "}}}
-"
+
 " Open test file that is under /src/test from the current buffer {{{1
 function! <SID>EditTestCode(testFileName)
     let pathOfCurrentBuffer = maven#slashFnamemodify(bufname("%"), ":p:h")
