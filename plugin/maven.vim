@@ -33,6 +33,7 @@ endif
 if !exists("g:maven_args")
     let g:maven_args = ""
 endif
+
 " }}}
 
 " Maps {{{
@@ -57,9 +58,16 @@ augroup END
 " Commands {{{
 command! -bang -nargs=+ -complete=custom,s:CompleteMavenLifecycle Mvn call s:RunMavenCommand(<q-args>, expand("<bang>"))
 command! -nargs=1 -complete=customlist,s:ListCandidatesOfTest MvnEditTestCode call s:EditTestCode(<q-args>)
-command! -nargs=+ -complete=custom,s:CmdCompleteListPackage MvnEditFile call s:EditFile(<q-args>)
-command! -nargs=+ -complete=custom,s:CmdCompleteListPackage MvnNewMainFile call s:EditFile("-t=main ".<q-args>)
-command! -nargs=+ -complete=custom,s:CmdCompleteListPackage MvnNewTestFile call s:EditFile("-t=test ".<q-args>)
+
+" TODO: Fix autocomplete for new options
+" command! -nargs=+ -complete=custom,s:CmdCompleteListPackage MvnEditFile call s:EditFile(<q-args>)
+" command! -nargs=+ -complete=custom,s:CmdCompleteListPackage MvnNewMainFile call s:EditFile("-t=main ".<q-args>)
+" command! -nargs=+ -complete=custom,s:CmdCompleteListPackage MvnNewTestFile call s:EditFile("-t=test ".<q-args>)
+command! -nargs=+ MvnEditFile call s:EditFile(<q-args>)
+command! -nargs=+ MvnNewMainFile call s:EditFile("-t=main ".<q-args>)
+command! -nargs=+ MvnNewTestFile call s:EditFile("-t=test ".<q-args>)
+command! MvnEditQueryBundle call s:EditFile("-s=resources ".fnamemodify(bufname("%"), ":p:t:r").".xml")
+command! MvnEditProperties call s:EditFile("-s=resources ".fnamemodify(bufname("%"), ":p:t:r")."_en_US.properties")
 " }}}
 
 " Menu {{{
@@ -376,9 +384,12 @@ endfunction
 "   MvnEdit <project> <type> <package> <filename>
 "       -project - is useful when your vim session's working directory is in the parent folder of the top pom.
 "                   This allows you to have cross pom commands.
-"       -type    - main or test
-"       -sources - is the type of source files you're creating; java, js, resources, etc...
-"       package  - is the full package name e.g. com.my_company.my_app.my_componenent.
+"       -type    - Can be main or test. If not specified it will take the current buffers value.  If the current buffer
+"                   does not have a package it will default to "main".
+"       -sources - is the type of source files you're creating; java, js, resources.  If not specified it will use the
+"                   extension of the specified filename.
+"       package  - is the full package name e.g. com.my_company.my_app.my_componenent.  If not specified it will use the
+"                   current buffers value or be omitted.
 "       filename - name of the file you wish to edit.  If it doesn't exist it will be created in the correct folder.
 "
 function! <SID>EditFile(args)
@@ -396,7 +407,7 @@ function! <SID>EditFile(args)
     let fileFullPath .= '/src/' . options.type . '/'
     let fileFullPath .= options.source .'/'
 
-    if has_key(options, "package")
+    if has_key(options, "package") && !empty(options.package)
         let fileFullPath .= substitute(options.package, '\.', '/', 'g') . '/'
     endif
 
@@ -417,9 +428,9 @@ endfunction
 "
 "
 let s:maven_argument_map = {
-            \"p": { "name": "project", "default": "" },
-            \"t": { "name": "type", "default": "main" },
-            \"s": { "name": "source", "default": "" }
+            \"p": "project",
+            \"t": "type",
+            \"s": "source"
             \}
 let s:maven_position_map = ["filename", "package"]
 
@@ -427,17 +438,19 @@ function! <SID>ParseArgumentsForMvnEdit(args)
     let arguments = split(a:args, '\s\+')
 
     let options = {}
+    " Look for options in the maven_argument_map.
     for argToken in keys(s:maven_argument_map)
-        let mapEntry = s:maven_argument_map[argToken]
 
         let argMatch = s:matchArgumentList(argToken, arguments)
-        if empty(argMatch)
-            let options[mapEntry.name] = mapEntry.default
-        else
-            let options[mapEntry.name] = argMatch
+        if !empty(argMatch)
+            let optionName = s:maven_argument_map[argToken]
+            let options[optionName] = argMatch
         endif
     endfor
 
+    " look for the values specifiedin the maven_position_map.  These are specified by
+    " position instead of a token.  File name will always be the last argument specified.
+    "
     let index = 0
     for item in reverse(arguments)
         if item =~ '\v^[^-].*$' && index < len(s:maven_position_map)
@@ -446,26 +459,25 @@ function! <SID>ParseArgumentsForMvnEdit(args)
         endif
     endfor
 
+    " Must at least have spcified a file name
     if empty(options) || !has_key(options, "filename")
         echoerr "EditFile -p(roject)=<project> -t(type)=[main|test] -s(sources)=[java|js|resources] package filename"
         return {}
     endif
 
     " if source wasn't specified then get it from the file extension
-    if empty(options.source)
+    if !has_key(options,"source") || empty(options.source)
         let options.source = fnamemodify(options.filename, ":e")
     endif
 
     " if package wasn't specified then get it from the current buffer if possible
-    if !has_key(options, "package")
-        let bufpath = fnamemodify(bufname("%"), ":p:h")
-        let pattern = '\v%(.*)?\/src\/.{-}\/.{-}\/(.*)$'
-        if bufpath =~ pattern
-            let packagematch = matchlist(bufpath, pattern)
-            let options.package = substitute(packagematch[1], '/', '\.', 'g') . '/'
-        endif
+    if !has_key(options, "package") || empty(options.package)
+        let options.package = s:getPackageFromBuffer()
     endif
 
+    if !has_key(options, "type") || empty(options.type)
+        let options.type = s:getTypeFromBuffer()
+    endif
 
     return options
 endfunction
@@ -482,6 +494,28 @@ function! <SID>matchArgumentList(argToken, arguments)
     endfor
 
     return ""
+endfunction
+
+function! <SID>getPackageFromBuffer()
+    let bufpath = fnamemodify(bufname("%"), ":p:h")
+    let pattern = '\v%(.*)?\/src\/.{-}\/.{-}\/(.*)$'
+    if bufpath =~ pattern
+        let packagematch = matchlist(bufpath, pattern)
+        return packagematch[1]
+    endif
+
+    return ""
+endfunction
+
+function! <SID>getTypeFromBuffer()
+    let bufpath = fnamemodify(bufname("%"), ":p:h")
+    let pattern = '\v%(.*)?\/src\/(.{-})\/.{-}\/.*$'
+    if bufpath =~ pattern
+        let packagematch = matchlist(bufpath, pattern)
+        return packagematch[1]
+    endif
+
+    return "main"
 endfunction
 
 " Generate list of package sorted by
