@@ -161,10 +161,13 @@ output from Maven.
 When we are editing a new file in Maven, we always need a help to choose the
 package of a Java file, which is relevant the path of source code.
 
-|:MvnNewMainFile| give you an eaisier way to edit a file by press |tab| to prompt
+|:MvnEditFile| allow you the most flexibility in specifying the parts of the
+Maven file location.
+
+|:MvnEditMainFile| give you an eaisier way to edit a file by press |tab| to prompt
 the existing package in '{basedir}/src/main/java'.
 
-|:MvnNewTestFile|, as its name implied, give you the hint of package to files under
+|:MvnEditTestFile|, as its name implied, give you the hint of package to files under
 '{basedir}/src/test/java'.
 
 For example, while you are editing a ".java" file, using following command to
@@ -376,41 +379,33 @@ Maven's context
             :Mvn resources:resources " Perform the goal "resources:resource' of maven
             :Mvn <Tab> " Auto-complete defined mavne phases
 
-:MvnNewMainFile [-p[refix]={prefix}] [package] [file-name]                          *:MvnNewMainFile*
-        Edit a new file by input its package and filename, this command would
-        build the whole tree of directory or open the existing file. The full path
-        of target file would be ascent to '{basedir}/src/main/{{prefix}|{file-extension}}/'.
+:MvnEditFile [-t[ype]={type} [-s[ource]={source}] [package] [file-name]
+        Edit a file by specifying the parts that make up the path. The full
+        path of the target file would be the combination of
+        '{basedir}/src/{type}/{source}/{package}/{file-name}'.
 
-        The [package], inputted by hand hardly, could be auto-compelted by
-        press <|tab|>. The entry directory for searching auto-completion comes
-        from {prefix} or the extension of file name of current buffer.
+        The [type] if not specified will be defaulted to the type of the
+        current buffer or 'main'.
 
-        The [-prefix] option is used to declare the prefix under
-        '{basedir}/src/main/{prefix}/' instead of {file-extension}. You may
-        use <Tab> to automatically complete existing directories.
+        The [source] if not specified will be defaulted to the
+        {file-extension} of the {file-name}.
 
-        For example: >
+        The [package] if not specified will be defaulted to the package of the
+        current buffer or empty if there is no current buffer under Maven.
 
-            :MvnNewMainFile org.pkgname ClassName.java
-            :MvnNewMainFile <Tab> " Auto-completing package coming from {basedir}/src/main/*/**/'
-            :MvnNewMainFile -p=resources org.pkgname ClassName.properties " Edit new file under /resources/
-            :MvnNewMainFile -p=webapp/WEB-INF org.pkgname ClassName.properties " Edit new file under /webapp/WEB-INF/
-            :MvnNewMainFile -p=<Tab> " Auto-completing directories under {basedir}/src/main/*
+        The [file-name] is required and must be specified.
+
+:MvnEditMainFile [-s[ource]={source}] [package] [file-name]                          *:MvnNewMainFile*
+        Edit a new main file by specifying the parts that make up the path.
+        This command defaults the type to 'main'.
 <
-        See: |MvnNewTestFile|
+        See: |MvnEditFile|
 
-:MvnNewTestFile [-p[refix]={prefix}] [package] [file-name]                          *:MvnNewTestFile*
-        As same as |:MvnNewMainFile| except looking for the path of file under
-        '{basedir}/src/test/{{prefix}|{file-extension}}/'.
-
-        For example: >
-
-            :MvnNewTestFile org.pkgname ClassName.java
-            :MvnNewTestFile <Tab> " Auto-completing package coming from {basedir}/src/test/*/**/'
-            :MvnNewMainFile -p=resources org.pkgname ClassName.properties
-            :MvnNewMainFile -p=<Tab> " Auto-completing directories under {basedir}/src/test/*
+:MvnEditTestFile [-p[refix]={prefix}] [package] [file-name]                          *:MvnNewTestFile*
+        Edit a new test file by specifying the parts that make up the path.
+        This command defaults the type to 'test'.
 <
-        See: |:MvnNewMainFile|
+        See: |:MvnEditFile|
 
 :MvnNewTestCode [Test-ClassName]
         Edit test code by [Test-ClassName] which under the package( Note: must be

@@ -64,8 +64,8 @@ command! -nargs=1 -complete=customlist,s:ListCandidatesOfTest MvnEditTestCode ca
 " command! -nargs=+ -complete=custom,s:CmdCompleteListPackage MvnNewMainFile call s:EditFile("-t=main ".<q-args>)
 " command! -nargs=+ -complete=custom,s:CmdCompleteListPackage MvnNewTestFile call s:EditFile("-t=test ".<q-args>)
 command! -nargs=+ MvnEditFile call s:EditFile(<q-args>)
-command! -nargs=+ MvnNewMainFile call s:EditFile("-t=main ".<q-args>)
-command! -nargs=+ MvnNewTestFile call s:EditFile("-t=test ".<q-args>)
+command! -nargs=+ MvnEditMainFile call s:EditFile("-t=main ".<q-args>)
+command! -nargs=+ MvnEditTestFile call s:EditFile("-t=test ".<q-args>)
 command! MvnEditQueryBundle call s:EditFile("-s=resources ".fnamemodify(bufname("%"), ":p:t:r").".xml")
 command! MvnEditProperties call s:EditFile("-s=resources ".fnamemodify(bufname("%"), ":p:t:r")."_en_US.properties")
 " }}}
