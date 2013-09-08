@@ -446,6 +446,11 @@ function! <SID>ParseArgumentsForMvnEdit(args)
         endif
     endfor
 
+    if empty(options) || !has_key(options, "filename")
+        echoerr "EditFile -p(roject)=<project> -t(type)=[main|test] -s(sources)=[java|js|resources] package filename"
+        return {}
+    endif
+
     " if source wasn't specified then get it from the file extension
     if empty(options.source)
         let options.source = fnamemodify(options.filename, ":e")
@@ -461,9 +466,6 @@ function! <SID>ParseArgumentsForMvnEdit(args)
         endif
     endif
 
-    if empty(options)
-        throw "EditFile -p(roject)=<project> -t(type)=[main|test] -s(sources)=[java|js|resources] package filename"
-    endif
 
     return options
 endfunction
