@@ -391,12 +391,10 @@ function! <SID>EditFile(args)
         return
     endif
 
-    echom string(options)
-
     " Prepare the full path name of new file
     let fileFullPath = maven#getMavenProjectRoot(bufnr("%"))
     let fileFullPath .= '/src/' . options.type . '/'
-    let fileFullPath .= options.sources .'/'
+    let fileFullPath .= options.source .'/'
 
     if has_key(options, "package")
         let fileFullPath .= substitute(options.package, '\.', '/', 'g') . '/'
@@ -421,7 +419,7 @@ endfunction
 let s:maven_argument_map = {
             \"p": { "name": "project", "default": "" },
             \"t": { "name": "type", "default": "main" },
-            \"s": { "name": "sources", "default": "" }
+            \"s": { "name": "source", "default": "" }
             \}
 let s:maven_position_map = ["filename", "package"]
 
@@ -448,8 +446,19 @@ function! <SID>ParseArgumentsForMvnEdit(args)
         endif
     endfor
 
-    if empty(options.sources)
-        let options.sources = fnamemodify(options.filename, ":e")
+    " if source wasn't specified then get it from the file extension
+    if empty(options.source)
+        let options.source = fnamemodify(options.filename, ":e")
+    endif
+
+    " if package wasn't specified then get it from the current buffer if possible
+    if !has_key(options, "package")
+        let bufpath = fnamemodify(bufname("%"), ":p:h")
+        let pattern = '\v%(.*)?\/src\/.{-}\/.{-}\/(.*)$'
+        if bufpath =~ pattern
+            let packagematch = matchlist(bufpath, pattern)
+            let options.package = substitute(packagematch[1], '/', '\.', 'g') . '/'
+        endif
     endif
 
     if empty(options)
