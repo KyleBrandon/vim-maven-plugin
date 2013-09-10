@@ -146,14 +146,16 @@ function! maven#getCandidateClassNameOfTest(className)
     let FuncGetCandidates = getbufvar("%", "func_maven_unitest_patterns")
     return FuncGetCandidates(a:className)
 endfunction
+
 function! maven#getDefaultCandidateClassNameOfTest(className)
     return [
-        \ a:className . "Test",
-        \ a:className . "TestCase",
-        \ "Test" . a:className,
-        \ a:className . "IT"
+        \ a:className . "Test"
+        " \ a:className . "TestCase",
+        " \ "Test" . a:className,
+        " \ a:className . "IT"
     \ ]
 endfunction
+"
 " // Functions for Unit Test :~)
 
 " ==================================================

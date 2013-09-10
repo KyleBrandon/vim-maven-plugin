@@ -34,6 +34,10 @@ if !exists("g:maven_args")
     let g:maven_args = ""
 endif
 
+if !exists("g:maven_test_folder_alternates")
+    let g:maven_test_folder_alternates = ['', '/test', '..']
+endif
+
 " }}}
 
 " Maps {{{
@@ -267,6 +271,12 @@ function! <SID>SwitchUnitTest()
     endif
     " //:~)
 
+    if !filereadable(targetFilePath)
+        if confirm("File:[".targetFilePath."] does not exist\nCreate it?", "&Yes\n&No", 1) == 2
+            return
+        endif
+    endif
+
     execute "edit " . targetFilePath
 endfunction
 
@@ -279,21 +289,18 @@ function! <SID>ConvertToFilePathForTest(sourceClassName, fileDir, fileExtension)
     let testDir = substitute(a:fileDir, '/src/main/', '/src/test/', '')
     let listOfCandidates = maven#getCandidateClassNameOfTest(a:sourceClassName)
 
-    let alternateDir = ['', '/test']
+    let searchDirs = s:BuildListOfSearchDirectories(testDir)
 
-    " TODO: Build a list of candidate paths for alternate test file locations.
-    " Current list works in the simple case of a test file existing in a
-    " different location.
-    for altDir in alternateDir
-        let localDir = testDir.altDir
+    for searchDir in searchDirs
         for candidate in listOfCandidates
-            let candidatePath = localDir . "/" . candidate . "." . a:fileExtension
+            let candidatePath = searchDir . "/" . candidate . "." . a:fileExtension
             if filereadable(candidatePath)
                 call add(listOfExistingCandidates, candidatePath)
             endif
 
-            call add(listOfNewCandidates, candidatePath)
         endfor
+
+        call add(listOfNewCandidates, searchDir."/".listOfCandidates[0].".".a:fileExtension)
     endfor
     " //:~)
 
@@ -320,32 +327,52 @@ function! <SID>ConvertToFilePathForTest(sourceClassName, fileDir, fileExtension)
     throw "Can't figure out a test for: " . a:sourceClassName
 endfunction
 function! <SID>ConvertToFilePathForSource(testClassName, fileDir, fileExtension)
-    let fileDir = substitute(a:fileDir, '/src/test/', '/src/main/', '')
-    let searchDirs = [fileDir, fnamemodify(fileDir, ':h')]
-    let lastmatch = ''
+    let sourceDir = substitute(a:fileDir, '/src/test/', '/src/main/', '')
+    let defaultmatch = ''
 
-    for dir in searchDirs
-        " Convert the class name of test code to class name of source code
+    let searchDirs = s:BuildListOfSearchDirectories(sourceDir)
+
+    for searchDir in searchDirs
         for matchPattern in s:BuildMatchPatternsForTestClass()
             if a:testClassName =~ matchPattern
-                let sourcefile = dir . "/" . substitute(a:testClassName, matchPattern, "", "") . "." . a:fileExtension
+                let sourcefile = searchDir . "/" . substitute(a:testClassName, matchPattern, "", "") . "." . a:fileExtension
                 if filereadable(sourcefile)
                     return sourcefile
                 endif
 
-                let lastmatch = sourcefile
+                " save the first attempt as the default
+                if empty(defaultmatch)
+                    let defaultmatch = sourcefile
+                endif
             endif
         endfor
     endfor
 
-    if empty(lastmatch)
-        throw "Can't figure out a source for: " . a:testClassName
-    endif
-
-    return lastmatch
+    " Use the first serch directory as the default
+    return defaultmatch
 endfunction
 
-" Build patters for matching part of class name of testing code
+function! <SID>BuildListOfSearchDirectories(fileDir)
+    let searchDirs = []
+    " get full path sans trailing slash
+    let fullFilePath = fnamemodify(a:fileDir, ":p:h")
+
+    for subDir in g:maven_test_folder_alternates
+        if (subDir ==? "..")
+            let searchDir = fnamemodify(fullFilePath, ":h")
+        else
+            let searchDir = fullFilePath.subDir
+        endif
+
+        if isdirectory(searchDir)
+            call add(searchDirs, searchDir)
+        endif
+    endfor
+
+    return searchDirs
+endfunction
+
+" Build patterns for matching part of class name of testing code
 function! <SID>BuildMatchPatternsForTestClass()
     let matchPatterns = []
 
