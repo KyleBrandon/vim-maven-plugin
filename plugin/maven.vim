@@ -203,6 +203,14 @@ endfunction
 
 " Switch between source and test file {{{1
 function! <SID>SwitchUnitTest()
+    " Is the toggle buffer set?
+    let currentbufnr = bufnr("%")
+    let alternateBuf = getbufvar(currentbufnr, "_mvn_toggle_buffer")
+    if (!empty(alternateBuf))
+        execute "buffer".alternateBuf
+        return
+    endif
+
     " ==================================================
     " Jump back to the file of test code from the result file of test
     " ==================================================
@@ -278,6 +286,10 @@ function! <SID>SwitchUnitTest()
     endif
 
     execute "edit " . targetFilePath
+
+    " setup some buffer variables to make the toggle easier next time
+    call setbufvar(targetFilePath, "_mvn_toggle_buffer", currentbufnr)
+    call setbufvar(currentbufnr, "_mvn_toggle_buffer", bufnr(targetFilePath))
 endfunction
 
 function! <SID>ConvertToFilePathForTest(sourceClassName, fileDir, fileExtension)

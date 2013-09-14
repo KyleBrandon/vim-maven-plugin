@@ -148,12 +148,7 @@ function! maven#getCandidateClassNameOfTest(className)
 endfunction
 
 function! maven#getDefaultCandidateClassNameOfTest(className)
-    return [
-        \ a:className . "Test"
-        " \ a:className . "TestCase",
-        " \ "Test" . a:className,
-        " \ a:className . "IT"
-    \ ]
+    return [ a:className . "Test" ]
 endfunction
 "
 " // Functions for Unit Test :~)
