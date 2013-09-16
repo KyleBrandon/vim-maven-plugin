@@ -34,8 +34,19 @@ if !exists("g:maven_args")
     let g:maven_args = ""
 endif
 
-if !exists("g:maven_test_folder_alternates")
-    let g:maven_test_folder_alternates = ['', '/test', '..']
+if !exists("g:maven_main_test_folder_maps")
+    let g:maven_main_test_folder_maps = {
+    \ 'main': [
+    \   { 'source': '\/src\/main', 'alternate': '/src/test' },
+    \   { 'source': '\/src\/main\/js\/fjs\(\/.*\)*', 'alternate': '\/src\/test\/js\1' },
+    \   { 'source': '\/src\/main\(\/.*\)*', 'alternate': '\/src\/test\1\/test' }
+    \ ],
+    \ 'test': [
+    \   { 'source': '\/src\/test', 'alternate': '/src/main' },
+    \   { 'source': '\/src\/test\(\/.*\)*\/test', 'alternate': '\/src\/main\1' },
+    \   { 'source': '\/src\/test\/js\(\/.*\)*', 'alternate': '\/src\/main\/js\/fjs\1' }
+    \ ]
+    \}
 endif
 
 " }}}
@@ -204,8 +215,8 @@ endfunction
 " Switch between source and test file {{{1
 function! <SID>SwitchUnitTest()
     " Is the toggle buffer set?
-    let currentbufnr = bufnr("%")
-    let alternateBuf = getbufvar(currentbufnr, "_mvn_toggle_buffer")
+    let currentBuf = bufnr("%")
+    let alternateBuf = getbufvar(currentBuf, "_mvn_toggle_buffer")
     if (!empty(alternateBuf))
         execute "buffer".alternateBuf
         return
@@ -230,7 +241,6 @@ function! <SID>SwitchUnitTest()
     " //:~)
 
     update
-    let currentBuf = bufnr("%")
 
     if !s:CheckFileInMavenProject(currentBuf)
         return
@@ -288,8 +298,8 @@ function! <SID>SwitchUnitTest()
     execute "edit " . targetFilePath
 
     " setup some buffer variables to make the toggle easier next time
-    call setbufvar(targetFilePath, "_mvn_toggle_buffer", currentbufnr)
-    call setbufvar(currentbufnr, "_mvn_toggle_buffer", bufnr(targetFilePath))
+    call setbufvar(targetFilePath, "_mvn_toggle_buffer", currentBuf)
+    call setbufvar(currentBuf, "_mvn_toggle_buffer", bufnr(targetFilePath))
 endfunction
 
 function! <SID>ConvertToFilePathForTest(sourceClassName, fileDir, fileExtension)
@@ -298,18 +308,14 @@ function! <SID>ConvertToFilePathForTest(sourceClassName, fileDir, fileExtension)
     let listOfNewCandidates = []
 
     " Prepare the list of candidates
-    let testDir = substitute(a:fileDir, '/src/main/', '/src/test/', '')
     let listOfCandidates = maven#getCandidateClassNameOfTest(a:sourceClassName)
-
-    let searchDirs = s:BuildListOfSearchDirectories(testDir)
-
+    let searchDirs = s:BuildListOfSearchDirectories(a:fileDir, g:maven_main_test_folder_maps.main)
     for searchDir in searchDirs
         for candidate in listOfCandidates
             let candidatePath = searchDir . "/" . candidate . "." . a:fileExtension
             if filereadable(candidatePath)
                 call add(listOfExistingCandidates, candidatePath)
             endif
-
         endfor
 
         call add(listOfNewCandidates, searchDir."/".listOfCandidates[0].".".a:fileExtension)
@@ -336,16 +342,15 @@ function! <SID>ConvertToFilePathForTest(sourceClassName, fileDir, fileExtension)
     endif
     " //:~)
 
-    throw "Can't figure out a test for: " . a:sourceClassName
+    echoerr "Can't figure out a test for: " . a:sourceClassName
+    return ""
 endfunction
 function! <SID>ConvertToFilePathForSource(testClassName, fileDir, fileExtension)
-    let sourceDir = substitute(a:fileDir, '/src/test/', '/src/main/', '')
     let defaultmatch = ''
 
-    let searchDirs = s:BuildListOfSearchDirectories(sourceDir)
-
+    let searchDirs = s:BuildListOfSearchDirectories(a:fileDir, g:maven_main_test_folder_maps.test)
     for searchDir in searchDirs
-        for matchPattern in s:BuildMatchPatternsForTestClass()
+        for matchPattern in s:BuildMatchPatternsForTestClass(a:testClassName)
             if a:testClassName =~ matchPattern
                 let sourcefile = searchDir . "/" . substitute(a:testClassName, matchPattern, "", "") . "." . a:fileExtension
                 if filereadable(sourcefile)
@@ -364,19 +369,11 @@ function! <SID>ConvertToFilePathForSource(testClassName, fileDir, fileExtension)
     return defaultmatch
 endfunction
 
-function! <SID>BuildListOfSearchDirectories(fileDir)
+function! <SID>BuildListOfSearchDirectories(fileDir, searchMap)
     let searchDirs = []
-    " get full path sans trailing slash
-    let fullFilePath = fnamemodify(a:fileDir, ":p:h")
-
-    for subDir in g:maven_test_folder_alternates
-        if (subDir ==? "..")
-            let searchDir = fnamemodify(fullFilePath, ":h")
-        else
-            let searchDir = fullFilePath.subDir
-        endif
-
-        if isdirectory(searchDir)
+    for foldermap in a:searchMap
+        let searchDir = substitute(a:fileDir, foldermap.source, foldermap.alternate, "")
+        if searchDir !=? a:fileDir && isdirectory(searchDir)
             call add(searchDirs, searchDir)
         endif
     endfor
@@ -385,7 +382,7 @@ function! <SID>BuildListOfSearchDirectories(fileDir)
 endfunction
 
 " Build patterns for matching part of class name of testing code
-function! <SID>BuildMatchPatternsForTestClass()
+function! <SID>BuildMatchPatternsForTestClass(testClassName)
     let matchPatterns = []
 
     for metaClassName in maven#getCandidateClassNameOfTest("<>")
@@ -402,6 +399,13 @@ function! <SID>BuildMatchPatternsForTestClass()
             call add(matchPatterns, strpart(metaClassName, endIndex + 1) . "$")
         endif
         " //:~)
+
+        " if the candidate array contains "<>" then try to match the name of the source as the name of the test.
+        " We return empty string as the code that uses this does a replace.  It just works and its odd.
+        if beginIndex ==? 0 && endIndex ==? 1
+            call add(matchPatterns, "")
+        endif
+
     endfor
 
     return matchPatterns
