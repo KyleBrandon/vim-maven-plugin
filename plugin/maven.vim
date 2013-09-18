@@ -302,6 +302,7 @@ function! <SID>SwitchUnitTest()
     call setbufvar(currentBuf, "_mvn_toggle_buffer", bufnr(targetFilePath))
 endfunction
 
+" Find a test file for a given source file {{{2
 function! <SID>ConvertToFilePathForTest(sourceClassName, fileDir, fileExtension)
     " Compose the corresponding file name
     let listOfExistingCandidates = []
@@ -326,14 +327,14 @@ function! <SID>ConvertToFilePathForTest(sourceClassName, fileDir, fileExtension)
     if len(listOfExistingCandidates) == 1
         return listOfExistingCandidates[0]
     elseif len(listOfExistingCandidates) > 0
-        let selectedIdx = confirm("Select a test code:\n", s:BuildSelectionOfClassName(listOfExistingCandidates), 1) - 1
+        let selectedIdx = confirm("Select an existing test file\n", s:BuildSelectionOfClassName(listOfExistingCandidates), 1) - 1
         if selectedIdx == -1 || selectedIdx == len(listOfExistingCandidates)
             return
         endif
 
         return listOfExistingCandidates[selectedIdx]
     elseif len(listOfNewCandidates) > 0
-        let selectedIdx = confirm("Edit a new test code:\n", s:BuildSelectionOfClassName(listOfNewCandidates), 1) - 1
+        let selectedIdx = confirm("Create a new test file\n", s:BuildSelectionOfClassName(listOfNewCandidates), 1) - 1
         if selectedIdx == -1 || selectedIdx == len(listOfNewCandidates)
             return
         endif
@@ -345,6 +346,9 @@ function! <SID>ConvertToFilePathForTest(sourceClassName, fileDir, fileExtension)
     echoerr "Can't figure out a test for: " . a:sourceClassName
     return ""
 endfunction
+"}}}
+
+" Find the source file for a given test file {{{2
 function! <SID>ConvertToFilePathForSource(testClassName, fileDir, fileExtension)
     let defaultmatch = ''
 
@@ -368,20 +372,24 @@ function! <SID>ConvertToFilePathForSource(testClassName, fileDir, fileExtension)
     " Use the first serch directory as the default
     return defaultmatch
 endfunction
+"}}}
 
+" Build a list of directories to search for a file {{{2
+" For a given directory build a list of search directories by applying the substitution map
 function! <SID>BuildListOfSearchDirectories(fileDir, searchMap)
     let searchDirs = []
     for foldermap in a:searchMap
         let searchDir = substitute(a:fileDir, foldermap.source, foldermap.alternate, "")
-        if searchDir !=? a:fileDir && isdirectory(searchDir)
+        if searchDir !=? a:fileDir
             call add(searchDirs, searchDir)
         endif
     endfor
 
     return searchDirs
 endfunction
+"}}}
 
-" Build patterns for matching part of class name of testing code
+" Build patterns for matching part of class name of testing code {{{2
 function! <SID>BuildMatchPatternsForTestClass(testClassName)
     let matchPatterns = []
 
@@ -410,17 +418,24 @@ function! <SID>BuildMatchPatternsForTestClass(testClassName)
 
     return matchPatterns
 endfunction
+"}}}
 
+" Build a list of the different class names that the user an choose from {{{2
 function! <SID>BuildSelectionOfClassName(listOfPath)
     let listOfSelection = []
+    echom len(a:listOfPath)
 
+    let index = 1
     for path in a:listOfPath
-        call add(listOfSelection, fnamemodify(path, ":t:r"))
+        call add(listOfSelection, index." ".fnamemodify(path, ":p:~"))
+        let index = index + 1
     endfor
     call add(listOfSelection, "*Cancel*") " Add 'Cancel' option
 
     return join(listOfSelection, "\n")
 endfunction
+"}}}
+
 "}}}
 
 " Open a new file given a category, package and file name {{{1
