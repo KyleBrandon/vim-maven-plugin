@@ -852,7 +852,7 @@ function! <SID>AdaptFilenameOfUnitTest(qfentry, fullClassName)
     let listOfTestFiles = split(glob(maven#getMavenProjectRoot(bufnr("%")) . '/src/test/**/' . filename . ".*"), "\n")
 
     if len(listOfTestFiles) == 0
-        let a:qfentry.filename "<Can't Find File for " . a:fullClassName . ">"
+        let a:qfentry.filename = "<Can't Find File for " . a:fullClassName . ">"
     else
         let a:qfentry.filename = listOfTestFiles[0]
     endif
